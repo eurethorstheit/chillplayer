@@ -9,11 +9,14 @@ from subprocess import PIPE, Popen, call
 import sys, os
 from  time import sleep
 from configparser import ConfigParser
+import curses
+
 
 # Neurerungen: Alles in einer Datei
 
 class URLS(): 
 	def __init__(self,anchor, newest):
+		self._othermenu = 1 # 0 für standard, 1 für alternativ -- gerade experimentell, muss noch in die config
 		self._URL = anchor
 		self.newest_URL = newest 		
 		self._Page = self.page_holen(self._URL)
@@ -62,7 +65,6 @@ class URLS():
 	''' Hiermit hole ich den Titel des aktuellen Videos '''
 	def hole_titel(self):
 		self.titel = re.search(r"(contentTitle)(.*)(=)(.*)(;)",self._Page)
-		print("Titel  "+str(self.titel))
 		if self.titel is not None:
 			self.titel = self.titel.group(4)
 			self.titel = (self.titel[2:len(self.titel)-1])
@@ -81,7 +83,11 @@ class URLS():
 		pass
 
 	def lade_video(self):
-		self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)])
+
+		if self._othermenu == 0:
+			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)])
+		elif self._othermenu == 1:
+			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)],stdin = PIPE, stderr = PIPE, stdout = PIPE)
 		''' Error Code 0 tritt auf, wenn alles Ordnungsgemäß herunter geladen wurde'''
 		while (self.ladeprozess != 0): 
 			pass	
@@ -92,11 +98,10 @@ class URLS():
 		self.videolink = None
 	
 		self._URL = next_urls
-		print("ChangeVideoURL"+str(self._URL))
 		self._Page = self.page_holen(self._URL)
 		self.hole_titel()
 		self.hole_videolink()
-
+		
 		self.show()
 
 	def Close_Player(self):
@@ -110,49 +115,106 @@ class URLS():
 
 	def show(self):
 		''' Das Menue '''
-		os.system("clear")
-			# Neuste URL -- Darf nicht weiter auf neustes gedrückt werden
-		print('aktuelles Video: '+ "\x1b[01;34m"+str(self.titel)+"\33[32m")
-		print('----------------------------------------')
-		print('1\t-\tVideo abspielen')
-		print('2\t-\tneueres Video')
-		print('3\t-\tälteres Video')
-		if self.DM == 1 : print('4\t-\tTestfunktion')
-		print('0\t-\tPlayer beenden')
-		print('----------------------------------------')
-		Auswahl = input("\tBitte eine Auswahl treffen: ") 
-		if (Auswahl == "1") : 
-			''' Spielt das auf der Platte liegende Video ab '''
-			self.starte_video()
-		if (Auswahl == "2") : 
-			''' nächstes, neueres Video '''
-			if (self._URL != self.newest_URL):		
-				self.change_video(self.hole_url_prev_next()[1])
-			else:
-				os.system("clear")				
-				sys.stdout.write("\t\x1b[01;34mkeine Neueren Folgen verfügbar\33[32m")
-				eingabe = input("\t\tReturn = Zurück zum Menue")
-				self.show()
-		if (Auswahl == "3") : 
-			''' vorheriges, älteres Video '''
-			self.change_video(self.hole_url_prev_next()[0])
+		if self._othermenu == 0:
+			os.system("clear")
+				# Neuste URL -- Darf nicht weiter auf neustes gedrückt werden
+			print('aktuelles Video: '+ "\x1b[01;34m"+str(self.titel)+"\33[32m")
+			print('----------------------------------------')
+			print('1\t-\tVideo abspielen')
+			print('2\t-\tneueres Video')
+			print('3\t-\tälteres Video')
+			if self.DM == 1 : print('4\t-\tTestfunktion')
+			print('0\t-\tPlayer beenden')
+			print('----------------------------------------')
+			Auswahl = input("\tBitte eine Auswahl treffen: ") 
+			if (Auswahl == "1") : 
+				''' Spielt das auf der Platte liegende Video ab '''
+				self.starte_video()
+			if (Auswahl == "2") : 
+				''' nächstes, neueres Video '''
+				if (self._URL != self.newest_URL):		
+					self.change_video(self.hole_url_prev_next()[1])
+				else:
+					os.system("clear")				
+					sys.stdout.write("\t\x1b[01;34mkeine Neueren Folgen verfügbar\33[32m")
+					eingabe = input("\t\tReturn = Zurück zum Menue")
+					self.show()
+			if (Auswahl == "3") : 
+				''' vorheriges, älteres Video '''
+				self.change_video(self.hole_url_prev_next()[0])
 		
-		if (Auswahl == "4") and (DM == 1) : 
-			''' Test '''
-			self.test()
-		if (Auswahl == "0"): 
-			''' Speichern des letzten Videos, ggf. Videos löschen und beenden '''
-			self.Close_Player()
-		else:
-			self.show()
+			if (Auswahl == "4") and (DM == 1) : 
+				''' Test '''
+				self.test()
+			if (Auswahl == "0"): 
+				''' Speichern des letzten Videos, ggf. Videos löschen und beenden '''
+				self.Close_Player()
+			else:
+				self.show()
+		if self._othermenu == 1:
+			screen = curses.initscr()
+			curses.noecho()
+			curses.cbreak()
+			screen.keypad(1)
+			screen.refresh()
+			curses.start_color()
+			curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLUE)
+			curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+
+
+			win = curses.newwin(12, 60, 5, 5)
+
+			win.box()
+	
+			win.addstr(2, 2, 'aktuelles Video: '+str(self.titel), curses.color_pair(1))
+			#win.addstr(3, 2, '----------------------------------------')
+			win.addstr(4, 2, 'Benutze die Pfeiltasten')
+
+			win.addstr(6, 2, 'Hoch - Video abspielen')
+			win.addstr(7, 2, "Rechts - neueres Video")
+			win.addstr(8, 2, "Links - älteres Video")
+			win.addstr(10, 2, "q - Player beenden")
+
+			win.refresh()
+
+			c = screen.getch()
+
+			if c == ord('q'):
+				print('w gedrückt')
+			elif c == curses.KEY_LEFT:
+				''' vorheriges, älteres Video '''
+				self.change_video(self.hole_url_prev_next()[0])
+
+
+			elif c == curses.KEY_RIGHT:
+				''' nächstes, neueres Video '''
+				if (self._URL != self.newest_URL):		
+					self.change_video(self.hole_url_prev_next()[1])
+				else:
+					win.addstr(2, 2, "keine neueren Folgen verfügbar")
+					self.show()
+
+			elif c == curses.KEY_UP:
+				''' Spielt das auf der Platte liegende Video ab '''
+				self.starte_video()
+
+			elif c == curses.KEY_DOWN:
+				pass
+
+			elif c == ord('q'):
+				''' Speichern des letzten Videos, ggf. Videos löschen und beenden '''
+					# reset funktioniert nicht. Keine Ahnung wieso, im Beispielprogramm gehts
+#				consolen_reset = call(['reset'])	
+				self.Close_Player()
+			curses.endwin()
 
 	def starte_video(self):
 		''' Spiele das Video ab'''
 		player = str(parser.get('videooptions','player'))
 		if player == "0":
-			self.abspielprozess = call(['omxplayer','-o','local','-b', 'Videos/'+self.titel])
+			self.abspielprozess = call(['omxplayer','-o','local','-b', 'Videos/'+self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
 		if player == "1":
-			self.abspielprozess = call(['mplayer','-fs', 'Videos/'+self.titel])
+			self.abspielprozess = call(['mplayer','-fs', 'Videos/'+self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
 		''' Solange das Video läuft, Füße still halten'''
 		while (self.abspielprozess == True):
 			pass
@@ -222,12 +284,25 @@ else:
 	parser.read('config.ini')
 	# Objekt der Quellenverarbeitung
 
+def init_curses():
+	''' Initialisieren des alternativen Displays'''
+	screen = curses.initscr()
+	curses.noecho()
+	curses.cbreak()
+	screen.keypad(1)
+
+
+
+
 urls = URLS(anchor,newest) 
 
 	# Erster Start (Auslagern in startup ?)
 urls.DM = int(parser.get('developermode','on'))
 urls.hole_titel()
 urls.hole_videolink()
+
+	#Schaltet das alternativmenue an
+
 	# Zeigen des Menues (Auslagern in Startup ?)
 urls.show()
 
