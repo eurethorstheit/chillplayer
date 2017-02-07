@@ -13,8 +13,8 @@ from configparser import ConfigParser
 # Neurerungen: Alles in einer Datei
 
 class URLS(): 
-	def __init__(self,starturl, newest):
-		self._URL = starturl
+	def __init__(self,anchor, newest):
+		self._URL = anchor
 		self.newest_URL = newest 		
 		self._Page = self.page_holen(self._URL)
 		self.titel = "mein Titel"
@@ -199,9 +199,10 @@ class player_startup():
 	#Erstelle Objekte für den Start und die Konfigurationsdatei
 startup = player_startup()
 parser = ConfigParser()
-	# erster Start:
 
+	# Neustes Video als Stopper für die Menüführung holen
 newest = startup.hole_neuste_url()
+
 if os.path.isfile("config.ini") == False: 
 	startup.first_start()
 	parser.set('videooptions','anchor',newest)
@@ -209,14 +210,19 @@ if os.path.isfile("config.ini") == False:
 	parser.write(datei)
 	datei.close()
 	parser.read('config.ini')
+		# Starturl (Anker) und neuste URL fallen in diesem Fall zusammen.
+	anchor = newest
+		# Prüfen, ob Videos-Ordner existiert und erstellen, falls nicht der Fall
+	if not os.path.exists('Videos'):
+		os.makedirs('Videos')
 	
 else:
 	parser.read('config.ini')
-	starturl = str(parser.get('videooptions','anchor'))
+	anchor = str(parser.get('videooptions','anchor'))
 	parser.read('config.ini')
 	# Objekt der Quellenverarbeitung
 
-urls = URLS(starturl,newest) 
+urls = URLS(anchor,newest) 
 
 	# Erster Start (Auslagern in startup ?)
 urls.DM = int(parser.get('developermode','on'))
