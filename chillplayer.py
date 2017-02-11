@@ -7,16 +7,16 @@ import urllib.request, urllib.error, urllib.parse #Zum Holen der Internetseite
 import re
 from subprocess import PIPE, Popen, call
 import sys, os
+import glob # Rückgabe von Ordnerinhalten 
 from  time import sleep
 from configparser import ConfigParser
 import curses
 
-
 # Neurerungen: Alles in einer Datei
-
+# Probleme mit wget -- unabhängig vom Interface
 class URLS(): 
-	def __init__(self,anchor, newest):
-		self._othermenu = 1 # 0 für standard, 1 für alternativ -- gerade experimentell, muss noch in die config
+	def __init__(self,anchor, newest, othermenu):
+		self._othermenu = othermenu # 0 für standard, 1 für alternativ -- gerade experimentell, muss noch in die config
 		self._URL = anchor
 		self.newest_URL = newest 		
 		self._Page = self.page_holen(self._URL)
@@ -45,17 +45,20 @@ class URLS():
 
 	def hole_url_prev_next(self):
 		''' Holt die nächste und die vorherige Seite als Liste '''	
-		Next = re.search(r"(http.*\.html)(.*Älter)",self._Page)
+		Prev = re.search(r"(http.*\.html)(.*Älter)",self._Page)
 
-		Prev = re.search(r"(http.*\.html)(.*Neuer)",self._Page)
+		Next = re.search(r"(http.*\.html)(.*Neuer)",self._Page)
 		if Next != None:
 			Next = Next.group(1)
 		if Prev != None:
 			Prev = Prev.group(1)
+		# dieser soll vor dem Umschalten in die config gespeichert werden
 		
+
 		Urls = []
-		Urls.append(Next)
 		Urls.append(Prev)
+		Urls.append(Next)
+		
 		return Urls
 
 	def url_holen():
@@ -75,8 +78,7 @@ class URLS():
 		if self.videolink is not None:
 			self.videolink = self.videolink.group(3)
 			''' Starte den Ladeprozess '''	
-			if os.path.isfile('Videos/'+self.titel) == False:
-				self.lade_video()		
+			self.lade_video()		
 	
 	def hole_liste_vorhandene_videos(self):
 		''' Holt die Liste der Videos, die bereits geladen sind '''
@@ -84,19 +86,25 @@ class URLS():
 
 	def lade_video(self):
 
+		if self.DM == 1 : print("Funktion lade_video\tDownload-URL: \n\t"+str(self.videolink))
 		if self._othermenu == 0:
-			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)])
+			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,'--continue', str(self.videolink)])			
 		elif self._othermenu == 1:
-			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)],stdin = PIPE, stderr = PIPE, stdout = PIPE)
-		''' Error Code 0 tritt auf, wenn alles Ordnungsgemäß herunter geladen wurde'''
-		while (self.ladeprozess != 0): 
-			pass	
+			#self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)],stdin = PIPE, stderr = PIPE, stdout = PIPE)
+			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,'--continue', str(self.videolink)])
+
+	def set_anchor(self,anchor):
+		parser.set('videooptions','anchor',anchor)
+		datei = open('config.ini','w')
+		parser.write(datei)
+		datei.close()
 
 	def change_video(self,next_urls = []):
 		self.ladeprozess = None
 		self.abspielprozess = None
 		self.videolink = None
-	
+			#	Vor dem Wechsel der URL soll diese als neuer Anker festgelegt werden und in die config.ini geschrieben werden
+		self.set_anchor(self._URL)
 		self._URL = next_urls
 		self._Page = self.page_holen(self._URL)
 		self.hole_titel()
@@ -111,6 +119,11 @@ class URLS():
 		datei = open('config.ini','w')
 		parser.write(datei)
 		datei.close()
+		delete_tempfiles = parser.get('videooptions','delete_tempfiles')		
+		if (delete_tempfiles == "1"):
+			files = glob.glob('Videos/*')
+			for f in files:
+				os.remove(f)
 		exit()
 
 	def show(self):
@@ -132,6 +145,12 @@ class URLS():
 				self.starte_video()
 			if (Auswahl == "2") : 
 				''' nächstes, neueres Video '''
+				if self.DM == 1:
+					print("aktuelle URL\n\t")
+					print(self._URL)
+					print("neuste URL\n\t")
+					print(self.newest_URL)
+					eingabe =  input("Eingabe für weiter…")
 				if (self._URL != self.newest_URL):		
 					self.change_video(self.hole_url_prev_next()[1])
 				else:
@@ -143,7 +162,7 @@ class URLS():
 				''' vorheriges, älteres Video '''
 				self.change_video(self.hole_url_prev_next()[0])
 		
-			if (Auswahl == "4") and (DM == 1) : 
+			if (Auswahl == "4") and (self.DM == 1) : 
 				''' Test '''
 				self.test()
 			if (Auswahl == "0"): 
@@ -183,11 +202,13 @@ class URLS():
 				print('w gedrückt')
 			elif c == curses.KEY_LEFT:
 				''' vorheriges, älteres Video '''
+				curses.endwin()			
 				self.change_video(self.hole_url_prev_next()[0])
 
 
 			elif c == curses.KEY_RIGHT:
 				''' nächstes, neueres Video '''
+				curses.endwin()
 				if (self._URL != self.newest_URL):		
 					self.change_video(self.hole_url_prev_next()[1])
 				else:
@@ -196,10 +217,12 @@ class URLS():
 
 			elif c == curses.KEY_UP:
 				''' Spielt das auf der Platte liegende Video ab '''
+				curses.endwin()
 				self.starte_video()
 
 			elif c == curses.KEY_DOWN:
-				pass
+				curses.endwin()
+				self.Close_Player()
 
 			elif c == ord('q'):
 				''' Speichern des letzten Videos, ggf. Videos löschen und beenden '''
@@ -219,9 +242,35 @@ class URLS():
 		while (self.abspielprozess == True):
 			pass
 		self.show()
+
+	def hole_url_prev_next_fehler(self):
+		''' Bei dem ausmarkierten Video wird None für das neuere Video, also für Next zurückgegeben, obwohl es nicht das neuste ist. '''	
+							
+		# http://www.chilloutzone.net/video/wie-von-der-tarantel-gestochen.html
+		Prev = re.search(r"(http.*\.html)(.*Älter)",self._Page)
+
+		Next = re.search(r"(http.*\.html)(.*Neuer)",self._Page)
+	#	if Next != None:
+	#		Next = Next.group(1)
+	#	if Prev != None:
+	#		Prev = Prev.group(1)
+		# dieser soll vor dem Umschalten in die config gespeichert werden
+		
+
+		Urls = []
+		Urls.append(Prev)
+		Urls.append(Next)
+		
+		return Urls
+
 	def test(self):
+			# nächste und vorherige Video-URL
+		print("Nächste und vorherige URL: \n")		
 		print(self.hole_url_prev_next())
-#		print(self.hole_url_prev_next()[1])
+		# print("Nächste und vorherige URL genauer (hole_url_prev_next_test): \n")				
+		print(self.hole_url_prev_next_fehler())
+
+		eingabe = input("Eingabetaste für weiter…")
 
 class player_startup():
 
@@ -247,8 +296,13 @@ class player_startup():
 		parser.add_section('videooptions')
 		eingabe = input("\nDevelopermode an ? Wenn ja, gibt es zusätzliche Auswahlmöglichkeiten, die aber für die normale Anwendung nur störend sind\n \t0 -- nein\n\t1 -- ja\n Eingabe: ")
 		parser.set('developermode','on',str(eingabe))
-		eingabe = input("\n\tWelcher Videoplayer?\n\tBeim Raspberry Pi ist es für gewöhnlich der omxplayer.Möglicherweise ändert sich das je nach Modell auch noch, entsprechend die Option.\n\t\t0 -- omxplayer\n\t\t1 -- mplayer\nEingabe: ")
+		eingabe = input("\nWelcher Videoplayer?\n\tBeim Raspberry Pi ist es für gewöhnlich der omxplayer.Möglicherweise ändert sich das je nach Modell auch noch, entsprechend die Option.\n\t\t0 -- omxplayer\n\t\t1 -- mplayer\nEingabe: ")
 		parser.set('videooptions','player',eingabe)
+		eingabe = input("\nWelche Oberfläche?\n\t0 -- keine Oberfläche\n\t1 -- Curses - in noch sehr experimentellem Zustand\nEingabe: ")
+		parser.set('videooptions','othermenu',eingabe)
+		eingabe = input("\nTemporäre Videodateien beim Beenden löschen <empfohlen>? \n\t0 -- nein\n\t1 -- ja\nEingabe: ")
+		parser.set('videooptions','delete_tempfiles',eingabe)
+
 		datei = open('config.ini','w')
 		parser.write(datei)
 		datei.close()
@@ -267,7 +321,6 @@ newest = startup.hole_neuste_url()
 
 if os.path.isfile("config.ini") == False: 
 	startup.first_start()
-	parser.set('videooptions','anchor',newest)
 	datei = open('config.ini','w')
 	parser.write(datei)
 	datei.close()
@@ -292,12 +345,13 @@ def init_curses():
 	screen.keypad(1)
 
 
+othermenu = int(parser.get('videooptions','othermenu'))
 
-
-urls = URLS(anchor,newest) 
+urls = URLS(anchor,newest,othermenu) 
 
 	# Erster Start (Auslagern in startup ?)
 urls.DM = int(parser.get('developermode','on'))
+
 urls.hole_titel()
 urls.hole_videolink()
 
