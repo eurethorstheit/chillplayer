@@ -273,15 +273,26 @@ class URLS():
 			curses.endwin()
 
 	def video_puffer(self):
-		while self.ladeprozess.poll() == None:
+			# Hole Gesamtzeit -- Achtung, Datei muss bereits auf dem Rechner sein. Falls zu schnell, kanns Probleme geben
+		gesamtzeit = int(self.hole_video_length())
+		
+		
+		Pufferanzahl = 50	# Wie oft die untere Gleichung geprüft werden soll
+		while (self.ladeprozess.poll() == None) and (Pufferanzahl > 0):
 			for line in self.ladeprozess.stderr:
-				match = re.search(r"(%.*[KM])(.*)s",str(line))
-				if (match != None):
-					match = match.group(2)	
-#					print(match.rstrip())
-#					print("\t\t\tVideo abspielbar in %s Sekunden\r" % str(match.rstrip()))
-					sys.stdout.write("\t\t\tVideo wird abgespielt in %s Sekunden\r" % str(match.rstrip()))
-					return int(match.rstrip())
+				if Pufferanzahl < 1:
+					break
+				restzeit = re.search(r"(%.*[KM])(.*)s",str(line))
+				if (restzeit != None):
+					restzeit = restzeit.group(2).strip()
+					try: 
+						restzeit = int(restzeit)
+						if restzeit < 0.5 * gesamtzeit: 	# Restladezeit kleiner als die Hälfte der Gesamtabspielzeit
+							Pufferanzahl = Pufferanzahl - 1
+							sys.stdout.write("\t\t\tVideo wird abgespielt in %s Sekunden\r" % (str(Pufferanzahl)))
+					except:
+						pass
+
 
 	def starte_video(self):
 		''' Zuerst Puffern ''' 
