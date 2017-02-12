@@ -11,9 +11,17 @@ import glob # Rückgabe von Ordnerinhalten
 from  time import sleep
 from configparser import ConfigParser
 import curses
+from threading import Thread
+import fcntl, select
+# Was weiter entwickelt wird seit Version 1
 
-# Neurerungen: Alles in einer Datei
-# Probleme mit wget -- unabhängig vom Interface
+# Runterladen im Hintergrund mit Threading und starten mit Pufferabsicherung wie beim Royalplayer
+	# Nötige Funktionen: hole_video_length, video_puffer, starte_video, lade_video
+	# Puffer ändern: Restzeitdownloadzeit: ETA oder so aus wget. Gesamtzeit ist gegeben --> einfach 
+
+# Laden des linken und rechten Videos
+# manchmal trefen noch Fehler auf: Herausfinden wieso, fixen oder Errorhandling und sagen, Video kann nicht abgespielt werden
+
 class URLS(): 
 	def __init__(self,anchor, newest, othermenu):
 		self._othermenu = othermenu # 0 für standard, 1 für alternativ -- gerade experimentell, muss noch in die config
@@ -61,6 +69,38 @@ class URLS():
 		
 		return Urls
 
+	def hole_video_length_dev(self):
+		''' Gibt die Videolänge einer Datei auf der Festplatte zurück (in Sekunden) '''
+		p = Popen(['ffmpeg','-i',self.titel], stdout = PIPE, stderr = PIPE, stdin = PIPE)
+		out, err = p.communicate()
+		err = str(err)
+		print(err)
+		input("\n…Rohdaten…\n")
+		err = re.search(r"(Duration:)(.*)(start)",err)
+		if (err != None):
+			err = err.group(0)
+			#duration ist Liste mit zwei Werten: 0 - Minuten , 1 - Sekunden
+			print(err)
+			input("\n…Gefiltert…\n")
+			duration_min = err.rstrip()[13:].split(',')[0].split('.')[0].split(':')
+			duration_sek = int(duration_min[0])*60 + int(duration_min[1])
+			return duration_sek
+
+
+	def hole_video_length(self):
+		''' Gibt die Videolänge einer Datei auf der Festplatte zurück (in Sekunden) '''
+		p = Popen(['ffmpeg','-i',self.titel], stdout = PIPE, stderr = PIPE, stdin = PIPE)
+		out, err = p.communicate()
+		err = str(err)
+		err = re.search(r"(Duration:)(.*)(start)",err)
+		if (err != None):
+			err = err.group(0)
+			#duration ist Liste mit zwei Werten: 0 - Minuten , 1 - Sekunden
+			duration_min = err.rstrip()[13:].split(',')[0].split('.')[0].split(':')
+			duration_sek = int(duration_min[0])*60 + int(duration_min[1])
+			return duration_sek
+
+
 	def url_holen():
 		''' Diese Funktion gibt holt eine Liste mit URLS, in denen die aktuelle, die vorherige und die nächste URL enthalten ist. Erste Fortschritte siehe test.py'''
 		pass
@@ -71,7 +111,7 @@ class URLS():
 		if self.titel is not None:
 			self.titel = self.titel.group(4)
 			self.titel = (self.titel[2:len(self.titel)-1])
-
+			self.titel = 'Videos/'+self.titel
 	''' Hiermit fange ich an, das aktuelle Video zu laden '''
 	def hole_videolink(self):
 		self.videolink = re.search(r"(MOVIE_LOC_PLAIN)(.*)(http.*mp4)",self._Page)
@@ -88,10 +128,10 @@ class URLS():
 
 		if self.DM == 1 : print("Funktion lade_video\tDownload-URL: \n\t"+str(self.videolink))
 		if self._othermenu == 0:
-			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,'--continue', str(self.videolink)])			
+			self.ladeprozess = Popen(['wget', '-O',self.titel,'--continue', str(self.videolink)],stdin = PIPE, stderr = PIPE, stdout = PIPE)			
 		elif self._othermenu == 1:
 			#self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,str(self.videolink)],stdin = PIPE, stderr = PIPE, stdout = PIPE)
-			self.ladeprozess = call(['wget', '-O','Videos/'+self.titel,'--continue', str(self.videolink)])
+			self.ladeprozess = Popen(['wget', '-O',self.titel,'--continue', str(self.videolink)])
 
 	def set_anchor(self,anchor):
 		parser.set('videooptions','anchor',anchor)
@@ -131,7 +171,7 @@ class URLS():
 		if self._othermenu == 0:
 			os.system("clear")
 				# Neuste URL -- Darf nicht weiter auf neustes gedrückt werden
-			print('aktuelles Video: '+ "\x1b[01;34m"+str(self.titel)+"\33[32m")
+			print('aktuelles Video: '+ "\x1b[01;34m"+str(self.titel)[6:]+"\33[32m")
 			print('----------------------------------------')
 			print('1\t-\tVideo abspielen')
 			print('2\t-\tneueres Video')
@@ -139,6 +179,7 @@ class URLS():
 			if self.DM == 1 : print('4\t-\tTestfunktion')
 			print('0\t-\tPlayer beenden')
 			print('----------------------------------------')
+
 			Auswahl = input("\tBitte eine Auswahl treffen: ") 
 			if (Auswahl == "1") : 
 				''' Spielt das auf der Platte liegende Video ab '''
@@ -231,13 +272,26 @@ class URLS():
 				self.Close_Player()
 			curses.endwin()
 
+	def video_puffer(self):
+		while self.ladeprozess.poll() == None:
+			for line in self.ladeprozess.stderr:
+				match = re.search(r"(%.*[KM])(.*)s",str(line))
+				if (match != None):
+					match = match.group(2)	
+#					print(match.rstrip())
+#					print("\t\t\tVideo abspielbar in %s Sekunden\r" % str(match.rstrip()))
+					sys.stdout.write("\t\t\tVideo wird abgespielt in %s Sekunden\r" % str(match.rstrip()))
+					return int(match.rstrip())
+
 	def starte_video(self):
+		''' Zuerst Puffern ''' 
+		self.video_puffer()
 		''' Spiele das Video ab'''
 		player = str(parser.get('videooptions','player'))
 		if player == "0":
-			self.abspielprozess = call(['omxplayer','-o','local','-b', 'Videos/'+self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
+			self.abspielprozess = call(['omxplayer','-o','local','-b', self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
 		if player == "1":
-			self.abspielprozess = call(['mplayer','-fs', 'Videos/'+self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
+			self.abspielprozess = call(['mplayer','-fs', self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
 		''' Solange das Video läuft, Füße still halten'''
 		while (self.abspielprozess == True):
 			pass
@@ -265,12 +319,8 @@ class URLS():
 
 	def test(self):
 			# nächste und vorherige Video-URL
-		print("Nächste und vorherige URL: \n")		
-		print(self.hole_url_prev_next())
-		# print("Nächste und vorherige URL genauer (hole_url_prev_next_test): \n")				
-		print(self.hole_url_prev_next_fehler())
+		print(self.hole_video_length_dev())
 
-		eingabe = input("Eingabetaste für weiter…")
 
 class player_startup():
 
