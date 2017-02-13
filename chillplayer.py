@@ -300,12 +300,12 @@ class URLS():
 		''' Spiele das Video ab'''
 		player = str(parser.get('videooptions','player'))
 		if player == "0":
-			self.abspielprozess = call(['omxplayer','-o','local','-b', self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
+			self.abspielprozess = call(['omxplayer','-o','local','-b', self.titel],stderr = PIPE, stdout = PIPE)
 		if player == "1":
-			self.abspielprozess = call(['mplayer','-fs', self.titel],stdin = PIPE, stderr = PIPE, stdout = PIPE)
+			self.abspielprozess = call(['mplayer','-fs', self.titel], stderr = PIPE, stdout = PIPE)
 		''' Solange das Video läuft, Füße still halten'''
-		while (self.abspielprozess == True):
-			pass
+#		while (self.abspielprozess == True):
+#			pass
 		self.show()
 
 	def hole_url_prev_next_fehler(self):
