@@ -299,11 +299,13 @@ class URLS():
 		self.video_puffer()
 		''' Spiele das Video ab'''
 		player = str(parser.get('videooptions','player'))
+		''' FREEZE: Es scheint, als wäre das PIPEN die Ursache für das einfrieren'''
 		if player == "0":
-			self.abspielprozess = call(['omxplayer','-o','local','-b', self.titel],stderr = PIPE, stdout = PIPE)
+			self.abspielprozess = call(['omxplayer','-o','local','-b', self.titel])
 		if player == "1":
-			self.abspielprozess = call(['mplayer','-fs', self.titel], stderr = PIPE, stdout = PIPE)
+			self.abspielprozess = call(['mplayer','-fs', self.titel]) 
 		''' Solange das Video läuft, Füße still halten'''
+
 #		while (self.abspielprozess == True):
 #			pass
 		self.show()
